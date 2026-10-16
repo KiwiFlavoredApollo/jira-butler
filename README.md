@@ -11,7 +11,7 @@
 
 ### `/setup <project>`
 
-Jira 프로젝트를 설정합니다.
+Jira 프로젝트의 URL을 전달합니다.
 
 ### `/sprint progress <sprint>`
 
