@@ -25,7 +25,7 @@ class Butler(discord.Client):
 
 
 @app_commands.command(name="setup", description="이 서버에서 사용할 Jira 프로젝트를 설정합니다.")
-@app_commands.describe(project="Jira 프로젝트 URL (예: https://example.atlassian.net/jira/software/projects/FITZZA)")
+@app_commands.describe(project="Jira 프로젝트 URL (예: https://example.atlassian.net/jira/software/projects/DEMO)")
 @app_commands.describe(email="Atlassian 계정 이메일", api_token="Jira API 토큰")
 @app_commands.guild_only()
 @app_commands.default_permissions(manage_guild=True)

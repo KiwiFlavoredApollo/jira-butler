@@ -37,7 +37,7 @@ class ProjectTests(unittest.TestCase):
             path = Path(directory) / "nested" / "settings.db"
             store = ProjectStore(path)
             self.assertIsNone(store.get_project(1))
-            store.set_project(1, BASE_URL + "FITZZA")
+            store.set_project(1, BASE_URL + "DEMO")
             store.set_project(2, BASE_URL + "OTHER")
             store.set_project(1, BASE_URL + "NEW")
             reopened = ProjectStore(path)
@@ -45,10 +45,10 @@ class ProjectTests(unittest.TestCase):
             self.assertEqual(reopened.get_project(2), BASE_URL + "OTHER")
 
     def test_board_url(self) -> None:
-        url = " https://fractalbarista.atlassian.net/jira/software/projects/fitzza/boards/1?filter=&groupBy=none#board "
-        expected = "https://fractalbarista.atlassian.net/jira/software/projects/FITZZA"
+        url = " https://example.atlassian.net/jira/software/projects/demo/boards/1?filter=&groupBy=none#board "
+        expected = "https://example.atlassian.net/jira/software/projects/DEMO"
         self.assertEqual(normalize_project(url), expected)
-        self.assertEqual(project_key(url), "FITZZA")
+        self.assertEqual(project_key(url), "DEMO")
 
     def test_context_path(self) -> None:
         url = "https://jira.example.com/jira/projects/TEST/summary"
@@ -59,14 +59,14 @@ class ProjectTests(unittest.TestCase):
             path = Path(directory) / "old.db"
             with closing(sqlite3.connect(path)) as connection, connection:
                 connection.execute("CREATE TABLE guild_projects (guild_id INTEGER PRIMARY KEY, project_key TEXT NOT NULL)")
-                connection.execute("INSERT INTO guild_projects VALUES (42, 'FITZZA')")
+                connection.execute("INSERT INTO guild_projects VALUES (42, 'DEMO')")
             store = ProjectStore(path)
             self.assertIsNone(store.get_project(42))
-            store.set_project(42, BASE_URL + "FITZZA")
-            self.assertEqual(ProjectStore(path).get_project(42), BASE_URL + "FITZZA")
+            store.set_project(42, BASE_URL + "DEMO")
+            self.assertEqual(ProjectStore(path).get_project(42), BASE_URL + "DEMO")
 
     def test_invalid_keys(self) -> None:
-        for key in ("", "FITZZA", "https://jira.test", "ftp://jira.test/projects/TEST", "https://user:pass@jira.test/projects/TEST", "https://jira.test:bad/projects/TEST", BASE_URL + "A" * 256, BASE_URL + "bad key"):
+        for key in ("", "DEMO", "https://jira.test", "ftp://jira.test/projects/TEST", "https://user:pass@jira.test/projects/TEST", "https://jira.test:bad/projects/TEST", BASE_URL + "A" * 256, BASE_URL + "bad key"):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 normalize_project(key)
 
@@ -89,8 +89,8 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
         self.directory.cleanup()
 
     async def test_setup_saves_normalized_url(self) -> None:
-        await setup.callback(self.interaction, BASE_URL + "fitzza/boards/1?groupBy=none", "user@example.com", "test-token")
-        self.assertEqual(self.store.get_project(42), BASE_URL + "FITZZA")
+        await setup.callback(self.interaction, BASE_URL + "demo/boards/1?groupBy=none", "user@example.com", "test-token")
+        self.assertEqual(self.store.get_project(42), BASE_URL + "DEMO")
         self.interaction.followup.send.assert_awaited_once()
         settings = self.store.get_settings(42)
         self.assertEqual(settings.email, "user@example.com")
@@ -111,7 +111,7 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_dm_does_not_save(self) -> None:
         self.interaction.guild_id = None
-        await setup.callback(self.interaction, BASE_URL + "FITZZA", "user@example.com", "test-token")
+        await setup.callback(self.interaction, BASE_URL + "DEMO", "user@example.com", "test-token")
         self.assertIsNone(self.store.get_project(42))
 
     async def test_permission_check(self) -> None:

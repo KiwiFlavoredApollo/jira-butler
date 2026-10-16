@@ -41,9 +41,9 @@ class ServiceTests(unittest.TestCase):
         ])
         client.priorities.return_value = [NS(id=str(i)) for i in range(1, 6)]
         client.enhanced_search_issues.return_value = [story("1", "done"), story("5", "new")]
-        self.assertEqual(self.service.fetch(BASE_URL + "FITZZA"), Progress(2, 1, 9, 8))
+        self.assertEqual(self.service.fetch(BASE_URL + "DEMO"), Progress(2, 1, 9, 8))
         client.enhanced_search_issues.assert_called_once_with(
-            'project = "FITZZA" AND issuetype in (10001) ORDER BY key',
+            'project = "DEMO" AND issuetype in (10001) ORDER BY key',
             fields="priority,status", maxResults=0,
         )
         client.close.assert_called_once()
@@ -52,7 +52,7 @@ class ServiceTests(unittest.TestCase):
     def test_auth_error(self, factory: MagicMock) -> None:
         factory.side_effect = JIRAError(status_code=401, text="secret")
         with self.assertRaisesRegex(ProgressError, "인증 정보"):
-            self.service.fetch(BASE_URL + "FITZZA")
+            self.service.fetch(BASE_URL + "DEMO")
 
     @patch("progress.JIRA", autospec=True)
     def test_different_site_rejected_before_connection(self, factory: MagicMock) -> None:
@@ -62,7 +62,7 @@ class ServiceTests(unittest.TestCase):
 
     def test_missing_configuration(self) -> None:
         with self.assertRaises(ProgressError):
-            ProgressService("", "", "").fetch(BASE_URL + "FITZZA")
+            ProgressService("", "", "").fetch(BASE_URL + "DEMO")
 
 
 class CommandTests(unittest.IsolatedAsyncioTestCase):
@@ -76,14 +76,14 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("/setup", self.interaction.followup.send.call_args.args[0])
 
     async def test_legacy_project_requires_setup(self) -> None:
-        self.store.set_project(42, BASE_URL + "FITZZA")
+        self.store.set_project(42, BASE_URL + "DEMO")
         with patch("main.ProgressService.fetch") as fetch:
             await project_progress.callback(self.interaction)
             fetch.assert_not_called()
         self.assertIn("/setup", self.interaction.followup.send.call_args.args[0])
 
     async def test_progress(self) -> None:
-        self.store.set_project(42, BASE_URL + "FITZZA", "user@example.com", "test-token")
+        self.store.set_project(42, BASE_URL + "DEMO", "user@example.com", "test-token")
         with patch("main.ProgressService", autospec=True) as factory:
             factory.return_value.fetch.return_value = Progress(2, 1, 10, 8)
             await project_progress.callback(self.interaction)
@@ -91,13 +91,13 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("80.0%", self.interaction.followup.send.call_args.args[0])
 
     async def test_empty(self) -> None:
-        self.store.set_project(42, BASE_URL + "FITZZA", "user@example.com", "test-token")
+        self.store.set_project(42, BASE_URL + "DEMO", "user@example.com", "test-token")
         with patch("main.ProgressService.fetch", return_value=Progress()):
             await project_progress.callback(self.interaction)
         self.assertIn("스토리가 없습니다", self.interaction.followup.send.call_args.args[0])
 
     async def test_api_error(self) -> None:
-        self.store.set_project(42, BASE_URL + "FITZZA", "user@example.com", "test-token")
+        self.store.set_project(42, BASE_URL + "DEMO", "user@example.com", "test-token")
         with patch("main.ProgressService.fetch", side_effect=ProgressError("인증 실패")):
             await project_progress.callback(self.interaction)
         self.assertEqual(self.interaction.followup.send.call_args.args[0], "인증 실패")

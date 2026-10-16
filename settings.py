@@ -7,7 +7,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 
 def normalize_project(project: str) -> str:
-    message = "Jira 프로젝트 URL을 입력해주세요. 예: https://example.atlassian.net/jira/software/projects/FITZZA"
+    message = "Jira 프로젝트 URL을 입력해주세요. 예: https://example.atlassian.net/jira/software/projects/DEMO"
     value = project.strip()
     try:
         url = urlsplit(value)
