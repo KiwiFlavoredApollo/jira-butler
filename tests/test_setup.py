@@ -16,6 +16,22 @@ BASE_URL = "https://example.atlassian.net/jira/software/projects/"
 
 
 class ProjectTests(unittest.TestCase):
+    def test_credentials_persist_and_are_isolated(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.db"
+            store = ProjectStore(path)
+            store.set_project(1, BASE_URL + "ONE", "one@example.com", "token-one")
+            store.set_project(2, BASE_URL + "TWO", "two@example.com", "token-two")
+            reopened = ProjectStore(path)
+            first = reopened.get_settings(1)
+            self.assertEqual(first.api_token, "token-one")
+            self.assertEqual(first.base_url, "https://example.atlassian.net")
+            self.assertNotIn("token-one", repr(first))
+            self.assertEqual(reopened.get_settings(2).email, "two@example.com")
+            store.set_project(1, BASE_URL + "NEW", "new@example.com", "new-token")
+            self.assertEqual(reopened.get_settings(1).api_token, "new-token")
+            self.assertIsNone(reopened.get_settings(3))
+
     def test_persistence_isolation_and_update(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "nested" / "settings.db"
@@ -73,19 +89,29 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
         self.directory.cleanup()
 
     async def test_setup_saves_normalized_url(self) -> None:
-        await setup.callback(self.interaction, BASE_URL + "fitzza/boards/1?groupBy=none")
+        await setup.callback(self.interaction, BASE_URL + "fitzza/boards/1?groupBy=none", "user@example.com", "test-token")
         self.assertEqual(self.store.get_project(42), BASE_URL + "FITZZA")
         self.interaction.followup.send.assert_awaited_once()
+        settings = self.store.get_settings(42)
+        self.assertEqual(settings.email, "user@example.com")
+        self.assertEqual(settings.api_token, "test-token")
+        self.assertNotIn("test-token", self.interaction.followup.send.call_args.args[0])
+
+    async def test_invalid_credentials_do_not_overwrite(self) -> None:
+        self.store.set_project(42, BASE_URL + "OLD", "old@example.com", "old-token")
+        await setup.callback(self.interaction, BASE_URL + "NEW", "user@example.com", " ")
+        self.assertEqual(self.store.get_settings(42).api_token, "old-token")
+        self.assertEqual(self.store.get_project(42), BASE_URL + "OLD")
 
     async def test_invalid_input_does_not_overwrite(self) -> None:
         self.store.set_project(42, BASE_URL + "OLD")
-        await setup.callback(self.interaction, "bad key")
+        await setup.callback(self.interaction, "bad key", "user@example.com", "test-token")
         self.assertEqual(self.store.get_project(42), BASE_URL + "OLD")
         self.interaction.response.send_message.assert_awaited_once()
 
     async def test_dm_does_not_save(self) -> None:
         self.interaction.guild_id = None
-        await setup.callback(self.interaction, BASE_URL + "FITZZA")
+        await setup.callback(self.interaction, BASE_URL + "FITZZA", "user@example.com", "test-token")
         self.assertIsNone(self.store.get_project(42))
 
     async def test_permission_check(self) -> None:

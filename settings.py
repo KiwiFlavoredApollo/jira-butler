@@ -1,6 +1,7 @@
 import re
 import sqlite3
 from contextlib import closing
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -35,6 +36,18 @@ def project_key(project_url: str) -> str:
     return urlsplit(normalize_project(project_url)).path.rsplit("/", 1)[1]
 
 
+@dataclass(frozen=True)
+class JiraSettings:
+    project_url: str
+    email: str = field(repr=False)
+    api_token: str = field(repr=False)
+
+    @property
+    def base_url(self) -> str:
+        url = urlsplit(self.project_url)
+        return urlunsplit((url.scheme, url.netloc, "", "", ""))
+
+
 class ProjectStore:
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -47,16 +60,19 @@ class ProjectStore:
             columns = {row[1] for row in connection.execute("PRAGMA table_info(guild_projects)")}
             if "project_url" not in columns:
                 connection.execute("ALTER TABLE guild_projects ADD COLUMN project_url TEXT")
+            for column in ("email", "api_token"):
+                if column not in columns:
+                    connection.execute(f"ALTER TABLE guild_projects ADD COLUMN {column} TEXT")
 
-    def set_project(self, guild_id: int, project: str) -> str:
+    def set_project(self, guild_id: int, project: str, email: str | None = None, api_token: str | None = None) -> str:
         url = normalize_project(project)
         key = project_key(url)
         with closing(sqlite3.connect(self.path)) as connection, connection:
             connection.execute(
-                "INSERT INTO guild_projects (guild_id, project_key, project_url) VALUES (?, ?, ?) "
+                "INSERT INTO guild_projects (guild_id, project_key, project_url, email, api_token) VALUES (?, ?, ?, ?, ?) "
                 "ON CONFLICT(guild_id) DO UPDATE SET project_key = excluded.project_key, "
-                "project_url = excluded.project_url",
-                (guild_id, key, url),
+                "project_url = excluded.project_url, email = excluded.email, api_token = excluded.api_token",
+                (guild_id, key, url, email, api_token),
             )
         return url
 
@@ -66,3 +82,10 @@ class ProjectStore:
                 "SELECT project_url FROM guild_projects WHERE guild_id = ?", (guild_id,)
             ).fetchone()
         return row[0] if row else None
+
+    def get_settings(self, guild_id: int) -> JiraSettings | None:
+        with closing(sqlite3.connect(self.path)) as connection:
+            row = connection.execute(
+                "SELECT project_url, email, api_token FROM guild_projects WHERE guild_id = ?", (guild_id,)
+            ).fetchone()
+        return JiraSettings(*row) if row and all(row) else None
