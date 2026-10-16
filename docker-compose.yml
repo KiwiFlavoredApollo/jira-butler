@@ -1,12 +1,17 @@
 services:
   bot:
     build: .
-    env_file:
-      - .env
     init: true
+    environment:
+      DISCORD_TOKEN: ${DISCORD_TOKEN:?DISCORD_TOKEN must be set}
+    volumes:
+      - bot-data:/app/data
     restart: unless-stopped
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  bot-data:

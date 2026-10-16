@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
     && useradd --system --gid bot --home-dir /app bot
 
 COPY --chown=bot:bot . .
+RUN mkdir -p /app/data && chown bot:bot /app/data
 
 USER bot
 
