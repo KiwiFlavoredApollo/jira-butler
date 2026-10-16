@@ -1,11 +1,11 @@
 services:
-  bot:
+  jira-butler:
     build: .
     init: true
     environment:
-      DISCORD_TOKEN: ${DISCORD_TOKEN:?DISCORD_TOKEN must be set}
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
     volumes:
-      - bot-data:/app/data
+      - jira-butler-data-data:/app/data
     restart: unless-stopped
     logging:
       driver: json-file
@@ -14,4 +14,4 @@ services:
         max-file: "3"
 
 volumes:
-  bot-data:
+  jira-butler-data:
