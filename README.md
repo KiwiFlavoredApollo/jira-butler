@@ -10,9 +10,13 @@
 
 ## 명령어
 
-### `/setup <project>`
+### `/setup <project> <email> <token>`
 
-Jira 프로젝트의 URL을 전달합니다.
+아래 정보를 전달하여 디스코드 봇을 설정합니다.
+
+- Jira 프로젝트의 URL
+- 사용자 이메일
+- 사용자 API 키
 
 ### `/sprint progress <sprint>`
 
