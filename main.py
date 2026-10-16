@@ -1,13 +1,14 @@
 import asyncio
 import logging
 import os
+import time
 from pathlib import Path
 
 import discord
 from discord import app_commands
 
-from settings import ProjectStore, normalize_project
-from progress import ProgressError, ProgressService
+from settings import JiraSettings, ProjectStore, normalize_project
+from progress import Progress, ProgressError, ProgressService, Sprint
 
 logger = logging.getLogger(__name__)
 
@@ -16,9 +17,27 @@ class Butler(discord.Client):
     def __init__(self, store: ProjectStore) -> None:
         super().__init__(intents=discord.Intents.none())
         self.store = store
+        self.sprint_cache: dict[int, tuple[JiraSettings, float, asyncio.Task[list[Sprint]]]] = {}
         self.tree = app_commands.CommandTree(self)
         self.tree.add_command(setup)
         self.tree.add_command(project_commands)
+        self.tree.add_command(sprint_commands)
+
+    async def available_sprints(self, guild_id: int, settings: JiraSettings) -> list[Sprint]:
+        cached = self.sprint_cache.get(guild_id)
+        if cached is None or cached[0] != settings or time.monotonic() - cached[1] > 60:
+            service = ProgressService(settings.base_url, settings.email, settings.api_token)
+            task = asyncio.create_task(asyncio.to_thread(service.list_sprints, settings.project_url))
+            # Retrieve exceptions even if the autocomplete request has already timed out.
+            task.add_done_callback(lambda done: None if done.cancelled() else done.exception())
+            cached = (settings, time.monotonic(), task)
+            self.sprint_cache[guild_id] = cached
+        try:
+            return await asyncio.wait_for(asyncio.shield(cached[2]), timeout=2.0)
+        except Exception:
+            if cached[2].done():
+                self.sprint_cache.pop(guild_id, None)
+            raise
 
     async def setup_hook(self) -> None:
         await self.tree.sync()
@@ -92,15 +111,18 @@ async def project_progress(interaction: discord.Interaction) -> None:
     except ProgressError as error:
         await interaction.followup.send(str(error), ephemeral=True)
         return
-    message = "조회 가능한 스토리가 없습니다."
-    if result.total:
-        message = (
-            f"프로젝트 진척도: **{result.percentage:.1f}%**\n"
-            f"완료 스토리: {result.done}/{result.total}\n"
-            f"완료 가중치: {result.done_weight}/{result.total_weight}\n"
-            "우선순위 높은 순 가중치: 8·5·3·2·1 / 완료 기준: Done 상태 범주"
-        )
-    await interaction.followup.send(message, ephemeral=True)
+    await interaction.followup.send(format_progress(result, "프로젝트"), ephemeral=True)
+
+
+def format_progress(result: Progress, title: str) -> str:
+    if not result.total:
+        return "조회 가능한 스토리가 없습니다."
+    return (
+        f"{title} 진척도: **{result.percentage:.1f}%**\n"
+        f"완료 스토리: {result.done}/{result.total}\n"
+        f"완료 가중치: {result.done_weight}/{result.total_weight}\n"
+        "우선순위 높은 순 가중치: 8·5·3·2·1 / 완료 기준: Done 상태 범주"
+    )
 
 
 @project_progress.error
@@ -112,6 +134,55 @@ async def progress_error(interaction: discord.Interaction, error: app_commands.A
         await interaction.followup.send(message, ephemeral=True)
     else:
         await interaction.response.send_message(message, ephemeral=True)
+
+
+sprint_commands = app_commands.Group(name="sprint", description="Jira 스프린트 조회", guild_only=True)
+
+
+@sprint_commands.command(name="progress", description="스프린트의 스토리 진척도를 확인합니다.")
+@app_commands.describe(sprint="자동완성 목록에서 스프린트를 선택하거나 이름 또는 ID를 입력하세요.")
+async def sprint_progress(interaction: discord.Interaction, sprint: str) -> None:
+    if interaction.guild_id is None:
+        await interaction.response.send_message("서버에서만 사용할 수 있습니다.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    client = interaction.client
+    if not isinstance(client, Butler):
+        raise RuntimeError("Butler 클라이언트가 필요합니다.")
+    settings = await asyncio.to_thread(client.store.get_settings, interaction.guild_id)
+    if settings is None:
+        await interaction.followup.send("먼저 /setup으로 Jira 프로젝트 URL, 이메일, API 토큰을 설정해주세요.", ephemeral=True)
+        return
+    try:
+        service = ProgressService(settings.base_url, settings.email, settings.api_token)
+        result = await asyncio.to_thread(service.fetch, settings.project_url, sprint)
+    except ProgressError as error:
+        await interaction.followup.send(str(error), ephemeral=True)
+        return
+    await interaction.followup.send(format_progress(result, "스프린트"), ephemeral=True)
+
+
+@sprint_progress.autocomplete("sprint")
+async def sprint_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    client = interaction.client
+    if interaction.guild_id is None or not isinstance(client, Butler):
+        return []
+    try:
+        settings = await asyncio.to_thread(client.store.get_settings, interaction.guild_id)
+        if settings is None:
+            return []
+        sprints = await client.available_sprints(interaction.guild_id, settings)
+    except Exception as error:
+        logger.warning("스프린트 자동완성 조회 실패: %s", type(error).__name__)
+        return []
+    query = current.strip().casefold()
+    return [app_commands.Choice(name=f"{item.name} [{item.state}] (#{item.id})"[:100], value=str(item.id))
+            for item in sprints if query in item.name.casefold() or query in str(item.id)][:25]
+
+
+@sprint_progress.error
+async def sprint_error(interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
+    await progress_error(interaction, error)
 
 
 def main() -> None:
