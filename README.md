@@ -6,6 +6,7 @@
 
 - Python
 - discord.py
+- jira-python
 
 ## 명령어
 
